@@ -32,7 +32,8 @@ class Start : RequestHandler<Any, Start.ResponseClass> {
     data class ResponseDataNears(val near: List<ResponseDataNear>) : ResponseData
     data class ResponseDataNear(val id: String,
                                 val destinationPlace: String?,
-                                val destinationName: String)
+                                val destinationName: String,
+                                val distance: Float)
 
     override fun handleRequest(input: Any, context: Context): ResponseClass  {
 
@@ -79,8 +80,8 @@ class Start : RequestHandler<Any, Start.ResponseClass> {
                         ResponseDataEmpty())
             }
 
-            val lat = near.getAsJsonPrimitive("lat").asDouble
-            val long = near.getAsJsonPrimitive("long").asDouble
+            val lat = near.getAsJsonPrimitive("lat").asFloat
+            val long = near.getAsJsonPrimitive("long").asFloat
 
             val responseData = ResponseDataNears(lookup
                     .nearby(Location.coord((lat * 1E6).toInt(), (long * 1E6).toInt()))
@@ -91,14 +92,31 @@ class Start : RequestHandler<Any, Start.ResponseClass> {
                     .map {location -> ResponseDataNear(
                             location.id!!,
                             location.place,
-                            location.name!!)
+                            location.name!!,
+                            distFrom(lat, long, location.latAsDouble.toFloat(), location.lonAsDouble.toFloat()))
                     })
 
             return ResponseClass(ResponseMeta(), responseData)
+
         } else return ResponseClass(
                 ResponseMeta("Error", 422, "The parameter 'station' is missing"),
                 ResponseDataEmpty())
 
+    }
+
+    /**
+     * Get the distance between to geo-coord.
+     * Taken from https://stackoverflow.com/a/837957
+     */
+    private fun distFrom(lat1: Float, lng1: Float, lat2: Float, lng2: Float): Float {
+        val earthRadius = 6371000.0 //meters
+        val dLat = Math.toRadians((lat2 - lat1).toDouble())
+        val dLng = Math.toRadians((lng2 - lng1).toDouble())
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(Math.toRadians(lat1.toDouble())) * Math.cos(Math.toRadians(lat2.toDouble())) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+        return (earthRadius * c).toFloat()
     }
 
 }
