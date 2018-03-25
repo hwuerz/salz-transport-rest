@@ -69,11 +69,5 @@ The pipeline is now available and a build can be performed.
   - Click `Next`
 - Click `Save`
 
-## Required Roles
-
-### codebuild-salz-transport-service-role 
-### cloudformation-lambda-execution-role
-### myRole for the lambda function 
-
-To setup these roles I refer to the AWS docs.
-
+## Hint
+This repo does not use a submodule for the public transport enabler because AWS Code Build still does not support it.
