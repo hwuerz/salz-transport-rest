@@ -1,0 +1,38 @@
+version: 0.2
+
+#env:
+  #variables:
+     # key: "value"
+     # key: "value"
+  #parameter-store:
+     # key: "value"
+     # key: "value"
+
+phases:
+  # install:
+    # commands:
+      # - apt-get install -y unzip
+      # - command
+  #pre_build:
+    #commands:
+      # - command
+      # - command
+  build:
+    commands:
+      gradle :rest:build
+      # - command
+      # - command
+  # post_build:
+    # commands:
+      # - command
+artifacts:
+  #type: zip
+  files:
+    '**/*'
+    # - location
+    # - location
+  discard-paths: no
+  base-directory: 'rest/build/fat-folder'
+#cache:
+  #paths:
+    # - paths

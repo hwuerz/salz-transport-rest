@@ -1,0 +1,225 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "BucketName": {
+      "Type": "String"
+    },
+    "ObjectKey": {
+      "Type": "String"
+    }
+  },
+  "Description": "An AWS Serverless Specification template describing your function.",
+  "Resources": {
+    "TransportLambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Ref": "BucketName"
+          },
+          "S3Key": {
+            "Ref": "ObjectKey"
+          }
+        },
+        "Description": "",
+        "Tags": [
+          {
+            "Value": "SAM",
+            "Key": "lambda:createdBy"
+          }
+        ],
+        "MemorySize": 512,
+        "Handler": "de.hwuerz.transport.rest.Start::handleRequest",
+        "Role": {
+          "Fn::GetAtt": [
+            "ExecutionRole",
+            "Arn"
+          ]
+        },
+        "Timeout": 20,
+        "Runtime": "java8"
+      }
+    },
+
+    "ExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version" : "2012-10-17",
+          "Statement": [ {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": [ "lambda.amazonaws.com" ]
+            },
+            "Action": [ "sts:AssumeRole" ]
+          } ]
+        },
+        "ManagedPolicyArns": [ "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole" ],
+        "Path": "/"
+      }
+    },
+
+
+    "RestApi": {
+      "Type": "AWS::ApiGateway::RestApi",
+      "Properties": {
+        "Name": "API Transport Rest"
+      }
+    },
+
+    "ResponseModel": {
+      "Type": "AWS::ApiGateway::Model",
+      "Properties": {
+        "ContentType": "application/json",
+        "RestApiId":  {"Ref": "RestApi"},
+        "Schema" : {}
+      }
+    },
+
+    "apiGatewayOptions": {
+      "Type": "AWS::ApiGateway::Method",
+      "Properties": {
+        "ApiKeyRequired" : false,
+        "AuthorizationType": "NONE",
+        "HttpMethod": "OPTIONS",
+        "RestApiId": { "Ref": "RestApi" },
+        "ResourceId": { "Fn::GetAtt": ["RestApi", "RootResourceId"] },
+        "Integration": {
+          "Type": "MOCK",
+          "IntegrationResponses": [{
+            "ResponseParameters": {
+              "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+              "method.response.header.Access-Control-Allow-Methods": "'POST,OPTIONS'",
+              "method.response.header.Access-Control-Allow-Origin": "'*'"
+            },
+            "ResponseTemplates": {
+              "application/json": ""
+            },
+            "StatusCode": 200
+          }],
+          "PassthroughBehavior": "NEVER",
+          "RequestTemplates": {
+            "application/json": "{'statusCode': 200}"
+          }
+        },
+        "MethodResponses": [{
+          "ResponseModels": {
+            "application/json": "Empty"
+          },
+          "ResponseParameters": {
+            "method.response.header.Access-Control-Allow-Headers": true,
+            "method.response.header.Access-Control-Allow-Methods": true,
+            "method.response.header.Access-Control-Allow-Origin": true
+          },
+          "StatusCode": 200
+        }]
+      }
+    },
+
+    "apiGateway": {
+      "Type" : "AWS::ApiGateway::Method",
+      "Properties" : {
+        "ApiKeyRequired" : true,
+        "AuthorizationType" : "NONE",
+        "HttpMethod" : "POST",
+        "RestApiId": { "Ref": "RestApi" },
+        "ResourceId": { "Fn::GetAtt": ["RestApi", "RootResourceId"] },
+        "Integration": {
+          "Type": "AWS",
+          "IntegrationHttpMethod": "POST",
+          "Uri": {"Fn::Join": ["",
+            ["arn:aws:apigateway:", {"Ref": "AWS::Region"}, ":lambda:path/2015-03-31/functions/", {"Fn::GetAtt": ["TransportLambda", "Arn"]}, "/invocations"]
+          ]},
+          "IntegrationResponses": [{
+            "StatusCode": 200,
+            "ResponseTemplates": {
+              "application/json": ""
+            },
+            "ResponseParameters": {
+              "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+              "method.response.header.Access-Control-Allow-Methods": "'POST,OPTIONS'",
+              "method.response.header.Access-Control-Allow-Origin": "'*'"
+            }
+          }]
+        },
+        "MethodResponses": [{
+          "ResponseModels": {
+            "application/json": {"Ref": "ResponseModel"}
+          },
+          "ResponseParameters": {
+            "method.response.header.Link": true,
+            "method.response.header.Access-Control-Allow-Headers": true,
+            "method.response.header.Access-Control-Allow-Methods": true,
+            "method.response.header.Access-Control-Allow-Origin": true
+          },
+          "StatusCode": 200
+        }]
+      }
+    },
+
+    "Deployment": {
+      "DependsOn": ["apiGateway", "apiGatewayOptions"],
+      "Type": "AWS::ApiGateway::Deployment",
+      "Properties": {
+        "RestApiId": { "Ref": "RestApi" },
+        "Description": "ProductionDeployment",
+        "StageName": "prod"
+      }
+    },
+
+    "LambdaInvokePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "TransportLambda",
+            "Arn"
+          ]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "apigateway.amazonaws.com"
+      }
+    },
+
+    "UsagePlan" : {
+      "Type" : "AWS::ApiGateway::UsagePlan",
+      "DependsOn": ["Deployment"],
+      "Properties" : {
+        "ApiStages" : [ {"ApiId" : { "Ref" : "RestApi" }, "Stage" :  "prod" } ],
+        "Description" : "Plan for normal usage",
+        "Quota" : {
+          "Limit" : 5000,
+          "Period" : "MONTH"
+        },
+        "Throttle" : {
+          "BurstLimit" : 200,
+          "RateLimit" : 100
+        },
+        "UsagePlanName" : "NormalUsageWatch"
+      }
+    },
+
+    "WatchApiKey": {
+      "Type" : "AWS::ApiGateway::ApiKey",
+      "DependsOn": ["apiGateway", "Deployment"],
+      "Properties" : {
+        "Enabled" : true,
+        "GenerateDistinctId" : true,
+        "StageKeys" : [{
+          "RestApiId" : { "Ref": "RestApi" },
+          "StageName" : "prod"
+        }]
+      }
+    },
+
+    "usagePlanKey" : {
+      "Type": "AWS::ApiGateway::UsagePlanKey",
+      "Properties": {
+        "KeyId" : {"Ref" : "WatchApiKey"},
+        "KeyType" : "API_KEY",
+        "UsagePlanId" : {"Ref" : "UsagePlan"}
+      }
+    }
+
+  }
+}
